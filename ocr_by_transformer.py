@@ -19,9 +19,18 @@ from torch.autograd import Variable
 import torchvision.models as models
 import torchvision.transforms as transforms
 
+import logging
+
 from analysis_recognition_dataset import load_lbl2id_map, statistics_max_len_label
 from transformer import *
 from train_utils import *
+
+logging.basicConfig(filename="logs",
+                    filemode='w',
+                    format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class Recognition_Dataset(object):
@@ -247,8 +256,8 @@ def run_epoch(data_loader, model, loss_compute, device=None):
         tokens += ntokens
         if i % 50 == 1:
             elapsed = time.time() - start
-            print("Epoch Step: %d Loss: %f Tokens per Sec: %f" %
-                  (i, loss / ntokens, tokens / elapsed))
+            logger.info("Epoch Step: %d Loss: %f Tokens per Sec: %f" %
+                        (i, loss / ntokens, tokens / elapsed))
             start = time.time()
             tokens = 0
     return total_loss / total_tokens
@@ -333,28 +342,28 @@ if __name__ == "__main__":
     optimizer = torch.optim.SGD(ocr_model.parameters(), lr=0.001, momentum=0.9)
 
     for epoch in range(nrof_epochs):
-        print(f"\nepoch {epoch}")
+        logger.info(f"\nepoch {epoch}")
 
-        print("train...")
+        logger.info("train...")
         ocr_model.train()
         # loss_compute = SimpleLossCompute(ocr_model.generator, criterion, model_opt)
         loss_compute = SimpleLossCompute(ocr_model.generator, criterion, optimizer)
         train_mean_loss = run_epoch(train_loader, ocr_model, loss_compute, device)
 
         if epoch % 10 == 0:
-            print("valid...")
+            logger.info("valid...")
             ocr_model.eval()
             valid_loss_compute = SimpleLossCompute(ocr_model.generator, criterion, None)
             valid_mean_loss = run_epoch(valid_loader, ocr_model, valid_loss_compute, device)
-            print(f"valid loss: {valid_mean_loss}")
+            logger.info(f"valid loss: {valid_mean_loss}")
 
     # save model
     torch.save(ocr_model.state_dict(), model_save_path)
 
     # 训练结束，使用贪心的解码方式推理训练集和验证集，统计正确率
     ocr_model.eval()
-    print("\n------------------------------------------------")
-    print("greedy decode trainset")
+    logger.info("\n------------------------------------------------")
+    logger.info("greedy decode trainset")
     total_img_num = 0
     total_correct_num = 0
     for batch_idx, batch in enumerate(train_loader):
@@ -377,14 +386,14 @@ if __name__ == "__main__":
             total_img_num += 1
             if not is_correct:
                 # 预测错误的case进行打印
-                print("----")
-                print(cur_decode_out)
-                print(pred_result)
+                logger.info("----")
+                logger.info(cur_decode_out)
+                logger.info(pred_result)
     total_correct_rate = total_correct_num / total_img_num * 100
-    print(f"total correct rate of trainset: {total_correct_rate}%")
+    logger.info(f"total correct rate of trainset: {total_correct_rate}%")
 
-    print("\n------------------------------------------------")
-    print("greedy decode validset")
+    logger.info("\n------------------------------------------------")
+    logger.info("greedy decode validset")
     total_img_num = 0
     total_correct_num = 0
     for batch_idx, batch in enumerate(valid_loader):
@@ -407,8 +416,8 @@ if __name__ == "__main__":
             total_img_num += 1
             if not is_correct:
                 # 预测错误的case进行打印
-                print("----")
-                print(cur_decode_out)
-                print(pred_result)
+                logger.info("----")
+                logger.info(cur_decode_out)
+                logger.info(pred_result)
     total_correct_rate = total_correct_num / total_img_num * 100
-    print(f"total correct rate of validset: {total_correct_rate}%")
+    logger.info(f"total correct rate of validset: {total_correct_rate}%")
