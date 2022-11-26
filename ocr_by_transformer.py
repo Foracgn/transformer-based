@@ -322,7 +322,7 @@ if __name__ == "__main__":
     # use transformer as ocr recognize model
     tgt_vocab = len(lbl2id_map.keys())
     d_model = 512
-    ocr_model = make_ocr_model(tgt_vocab, N=5, d_model=d_model, d_ff=2048, h=8, dropout=0.1)
+    ocr_model = make_ocr_model(tgt_vocab, n=5, d_model=d_model, d_ff=2048, h=8, dropout=0.1)
     ocr_model.to(device)
 
     # train prepare
