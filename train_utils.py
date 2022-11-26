@@ -4,7 +4,8 @@ from torch.autograd import Variable
 
 
 class LabelSmoothing(nn.Module):
-    "Implement label smoothing."
+    """Implement label smoothing."""
+
     def __init__(self, size, padding_idx, smoothing=0.0):
         super(LabelSmoothing, self).__init__()
         self.criterion = nn.KLDivLoss(size_average=False)
@@ -13,7 +14,7 @@ class LabelSmoothing(nn.Module):
         self.smoothing = smoothing
         self.size = size
         self.true_dist = None
-        
+
     def forward(self, x, target):
         assert x.size(1) == self.size
         true_dist = x.data.clone()
@@ -30,29 +31,31 @@ class LabelSmoothing(nn.Module):
 # Example of label smoothing.
 crit = LabelSmoothing(5, 0, 0.4)
 predict = torch.FloatTensor([[0, 0.2, 0.7, 0.1, 0],
-                             [0, 0.2, 0.7, 0.1, 0], 
+                             [0, 0.2, 0.7, 0.1, 0],
                              [0, 0.2, 0.7, 0.1, 0]])
-v = crit(Variable(predict.log()), 
+v = crit(Variable(predict.log()),
          Variable(torch.LongTensor([2, 1, 0])))
 
-
 crit = LabelSmoothing(5, 0, 0.1)
+
+
 def loss(x):
     d = x + 3 * 1
     predict = torch.FloatTensor([[0, x / d, 1 / d, 1 / d, 1 / d],
                                  ])
-    #print(predict)
+    # print(predict)
     return crit(Variable(predict.log()),
-                 Variable(torch.LongTensor([1]))).data[0]
+                Variable(torch.LongTensor([1]))).data[0]
 
 
 class SimpleLossCompute:
-    "A simple loss compute and train function."
+    """A simple loss compute and train function."""
+
     def __init__(self, generator, criterion, opt=None):
         self.generator = generator
         self.criterion = criterion
         self.opt = opt
-        
+
     def __call__(self, x, y, norm):
         """
         norm: loss的归一化系数，用batch中所有有效token数即可
