@@ -8,14 +8,8 @@ use transformer to do OCR!
 @author: anshengmath@163.com
 """
 import os
-import time
-import copy
-import numpy as np
 from PIL import Image
 
-import torch
-import torch.nn as nn
-from torch.autograd import Variable
 import torchvision.models as models
 import torchvision.transforms as transforms
 
@@ -33,7 +27,7 @@ logging.basicConfig(filename="logs",
 logger = logging.getLogger(__name__)
 
 
-class Recognition_Dataset(object):
+class RecognitionDataset(object):
 
     def __init__(self, dataset_root_dir, lbl2id_map, sequence_len, max_ratio, phase='train', pad=0):
 
@@ -71,15 +65,15 @@ class Recognition_Dataset(object):
         """ 
         获取对应index的图像和ground truth label，并视情况进行数据增强
         """
-        img_name = self.imgs_list[index]
-        img_path = os.path.join(self.img_dir, img_name)
+        imgName = self.imgs_list[index]
+        imgPath = os.path.join(self.img_dir, imgName)
         lbl_str = self.lbls_list[index]
 
         # ----------------
         # 图片预处理
         # ----------------
         # load image
-        img = Image.open(img_path).convert('RGB')
+        img = Image.open(imgPath).convert('RGB')
 
         # 对图片进行大致等比例的缩放
         # 将高缩放到32，宽大致等比例缩放，但要被32整除
@@ -94,26 +88,25 @@ class Recognition_Dataset(object):
         img_resize = img.resize((w_new, h_new), Image.BILINEAR)
 
         # 对图片右半边进行padding，使得宽/高比例固定=self.max_ratio
-        img_padd = Image.new('RGB', (32 * self.max_ratio, 32), (0, 0, 0))
-        img_padd.paste(img_resize, (0, 0))
+        imgPadding = Image.new('RGB', (32 * self.max_ratio, 32), (0, 0, 0))
+        imgPadding.paste(img_resize, (0, 0))
 
         # 随机颜色变换
-        img_input = self.color_trans(img_padd)
+        imgInput = self.color_trans(imgPadding)
         # Normalize
-        img_input = self.trans_Normalize(img_input)
+        imgInput = self.trans_Normalize(imgInput)
 
         # ----------------
         # label处理
         # ----------------
 
         # 构造encoder的mask
-        encode_mask = [1] * ratio + [0] * (self.max_ratio - ratio)
-        encode_mask = torch.tensor(encode_mask)
-        encode_mask = (encode_mask != 0).unsqueeze(0)
+        encodeMask = [1] * ratio + [0] * (self.max_ratio - ratio)
+        encodeMask = torch.tensor(encodeMask)
+        encodeMask = (encodeMask != 0).unsqueeze(0)
 
         # 构造ground truth label
-        gt = []
-        gt.append(1)  # 先添加句子起始符
+        gt = [1]
         for lbl in lbl_str:
             gt.append(self.lbl2id_map[lbl])
         gt.append(2)
@@ -123,17 +116,17 @@ class Recognition_Dataset(object):
         gt = gt[:self.sequence_len + 2]
 
         # decoder的输入
-        decode_in = gt[:-1]
-        decode_in = torch.tensor(decode_in)
+        decodeIn = gt[:-1]
+        decodeIn = torch.tensor(decodeIn)
         # decoder的输出
-        decode_out = gt[1:]
-        decode_out = torch.tensor(decode_out)
+        decodeOut = gt[1:]
+        decodeOut = torch.tensor(decodeOut)
         # decoder的mask 
-        decode_mask = self.make_std_mask(decode_in, self.pad)
+        decodeMask = self.make_std_mask(decodeIn, self.pad)
         # 有效tokens数
-        ntokens = (decode_out != self.pad).data.sum()
+        nTokens = (decodeOut != self.pad).data.sum()
 
-        return img_input, encode_mask, decode_in, decode_out, decode_mask, ntokens
+        return imgInput, encodeMask, decodeIn, decodeOut, decodeMask, nTokens
 
     @staticmethod
     def make_std_mask(tgt, pad):
@@ -217,7 +210,7 @@ def make_ocr_model(tgt_vocab, n=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
         nn.Sequential(Embeddings(d_model, tgt_vocab), c(position)),
         Generator(d_model, tgt_vocab))
 
-    # Initialize parameters with Glorot / fan_avg.
+    # Initialize parameters with Gloot / fan_avg.
     for child in model.children():
         if child is backbone:
             # 将backbone的权重设为不计算梯度
@@ -234,33 +227,33 @@ def make_ocr_model(tgt_vocab, n=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
 def run_epoch(data_loader, model, loss_compute, device=None):
     """Standard Training and Logging Function"""
     start = time.time()
-    total_tokens = 0
-    total_loss = 0
+    totalTokens = 0
+    totalLoss = 0
     tokens = 0
     for i, batch in enumerate(data_loader):
         # if device == "cuda":
         #    batch.to_device(device) 
-        img_input, encode_mask, decode_in, decode_out, decode_mask, ntokens = batch
-        img_input = img_input.to(device)
-        encode_mask = encode_mask.to(device)
-        decode_in = decode_in.to(device)
-        decode_out = decode_out.to(device)
-        decode_mask = decode_mask.to(device)
-        ntokens = torch.sum(ntokens).to(device)
+        imgInput, encodeMask, decodeIn, decodeOut, decodeMask, nTokens = batch
+        imgInput = imgInput.to(device)
+        encodeMask = encodeMask.to(device)
+        decodeIn = decodeIn.to(device)
+        decodeOut = decodeOut.to(device)
+        decodeMask = decodeMask.to(device)
+        nTokens = torch.sum(nTokens).to(device)
 
-        out = model.forward(img_input, decode_in, encode_mask, decode_mask)
+        out = model.forward(imgInput, decodeIn, encodeMask, decodeMask)
 
-        loss = loss_compute(out, decode_out, ntokens)
-        total_loss += loss
-        total_tokens += ntokens
-        tokens += ntokens
+        loss = loss_compute(out, decode_out, nTokens)
+        totalLoss += loss
+        totalTokens += nTokens
+        tokens += nTokens
         if i % 50 == 1:
             elapsed = time.time() - start
             logger.info("Epoch Step: %d Loss: %f Tokens per Sec: %f" %
-                        (i, loss / ntokens, tokens / elapsed))
+                        (i, loss / nTokens, tokens / elapsed))
             start = time.time()
             tokens = 0
-    return total_loss / total_tokens
+    return totalLoss / totalTokens
 
 
 # greedy decode
@@ -286,12 +279,12 @@ def greedy_decode(model, src, src_mask, max_len, start_symbol, end_symbol):
     return ys
 
 
-def judge_is_correct(pred, label):
+def judge_is_correct(prediction, label):
     # 判断模型预测结果和label是否一致
-    pred_len = pred.shape[0]
-    label = label[:pred_len]
-    is_correct = 1 if label.equal(pred) else 0
-    return is_correct
+    predictionLen = prediction.shape[0]
+    label = label[:predictionLen]
+    isCorrect = 1 if label.equal(prediction) else 0
+    return isCorrect
 
 
 if __name__ == "__main__":
@@ -299,7 +292,7 @@ if __name__ == "__main__":
     # TODO set parameters
     base_data_dir = './ICDAR_2015/'  # 数据集根目录，请将数据下载到此位置
     device = torch.device('cuda')
-    nrof_epochs = 1000
+    nRofEpochs = 1000
     batch_size = 64
     model_save_path = './log/ex1_ocr_model.pth'
 
@@ -316,8 +309,8 @@ if __name__ == "__main__":
 
     # 构造 dataloader
     max_ratio = 8  # 图片预处理时 宽/高的最大值，不超过就保比例resize，超过会强行压缩
-    train_dataset = Recognition_Dataset(base_data_dir, lbl2id_map, sequence_len, max_ratio, 'train', pad=0)
-    valid_dataset = Recognition_Dataset(base_data_dir, lbl2id_map, sequence_len, max_ratio, 'valid', pad=0)
+    train_dataset = RecognitionDataset(base_data_dir, lbl2id_map, sequence_len, max_ratio, 'train', pad=0)
+    valid_dataset = RecognitionDataset(base_data_dir, lbl2id_map, sequence_len, max_ratio, 'valid', pad=0)
     train_loader = torch.utils.data.DataLoader(train_dataset,
                                                batch_size=batch_size,
                                                shuffle=True,
@@ -341,7 +334,7 @@ if __name__ == "__main__":
     # optimizer = torch.optim.Adam(ocr_model.parameters(), lr=0.0005, betas=(0.9, 0.98), eps=1e-9)
     optimizer = torch.optim.SGD(ocr_model.parameters(), lr=0.001, momentum=0.9)
 
-    for epoch in range(nrof_epochs):
+    for epoch in range(nRofEpochs):
         logger.info(f"\nepoch {epoch}")
 
         logger.info("train...")
@@ -363,11 +356,11 @@ if __name__ == "__main__":
     # 训练结束，使用贪心的解码方式推理训练集和验证集，统计正确率
     ocr_model.eval()
     logger.info("\n------------------------------------------------")
-    logger.info("greedy decode trainset")
+    logger.info("greedy decode train set")
     total_img_num = 0
     total_correct_num = 0
     for batch_idx, batch in enumerate(train_loader):
-        img_input, encode_mask, decode_in, decode_out, decode_mask, ntokens = batch
+        img_input, encode_mask, decode_in, decode_out, decode_mask, nTokens = batch
         img_input = img_input.to(device)
         encode_mask = encode_mask.to(device)
 
@@ -377,27 +370,28 @@ if __name__ == "__main__":
             cur_encode_mask = encode_mask[i].unsqueeze(0)
             cur_decode_out = decode_out[i]
 
-            pred_result = greedy_decode(ocr_model, cur_img_input, cur_encode_mask, max_len=sequence_len, start_symbol=1,
-                                        end_symbol=2)
-            pred_result = pred_result.cpu()
+            predictResult = greedy_decode(ocr_model, cur_img_input, cur_encode_mask, max_len=sequence_len,
+                                          start_symbol=1,
+                                          end_symbol=2)
+            predictResult = predictResult.cpu()
 
-            is_correct = judge_is_correct(pred_result, cur_decode_out)
+            is_correct = judge_is_correct(predictResult, cur_decode_out)
             total_correct_num += is_correct
             total_img_num += 1
             if not is_correct:
                 # 预测错误的case进行打印
                 logger.info("----")
                 logger.info(cur_decode_out)
-                logger.info(pred_result)
+                logger.info(predictResult)
     total_correct_rate = total_correct_num / total_img_num * 100
-    logger.info(f"total correct rate of trainset: {total_correct_rate}%")
+    logger.info(f"total correct rate of train set: {total_correct_rate}%")
 
     logger.info("\n------------------------------------------------")
-    logger.info("greedy decode validset")
+    logger.info("greedy decode valid set")
     total_img_num = 0
     total_correct_num = 0
     for batch_idx, batch in enumerate(valid_loader):
-        img_input, encode_mask, decode_in, decode_out, decode_mask, ntokens = batch
+        img_input, encode_mask, decode_in, decode_out, decode_mask, nTokens = batch
         img_input = img_input.to(device)
         encode_mask = encode_mask.to(device)
 
@@ -407,17 +401,18 @@ if __name__ == "__main__":
             cur_encode_mask = encode_mask[i].unsqueeze(0)
             cur_decode_out = decode_out[i]
 
-            pred_result = greedy_decode(ocr_model, cur_img_input, cur_encode_mask, max_len=sequence_len, start_symbol=1,
-                                        end_symbol=2)
-            pred_result = pred_result.cpu()
+            predictResult = greedy_decode(ocr_model, cur_img_input, cur_encode_mask, max_len=sequence_len,
+                                          start_symbol=1,
+                                          end_symbol=2)
+            predictResult = predictResult.cpu()
 
-            is_correct = judge_is_correct(pred_result, cur_decode_out)
+            is_correct = judge_is_correct(predictResult, cur_decode_out)
             total_correct_num += is_correct
             total_img_num += 1
             if not is_correct:
                 # 预测错误的case进行打印
                 logger.info("----")
                 logger.info(cur_decode_out)
-                logger.info(pred_result)
+                logger.info(predictResult)
     total_correct_rate = total_correct_num / total_img_num * 100
-    logger.info(f"total correct rate of validset: {total_correct_rate}%")
+    logger.info(f"total correct rate of valid set: {total_correct_rate}%")
