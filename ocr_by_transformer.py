@@ -243,7 +243,7 @@ def run_epoch(data_loader, model, loss_compute, device=None):
 
         out = model.forward(imgInput, decodeIn, encodeMask, decodeMask)
 
-        loss = loss_compute(out, decode_out, nTokens)
+        loss = loss_compute(out, decodeOut, nTokens)
         totalLoss += loss
         totalTokens += nTokens
         tokens += nTokens
